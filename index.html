@@ -26,8 +26,8 @@
             color: white;
             font-family: 'Inter', sans-serif;
             overflow-x: hidden;
-            -webkit-tap-highlight-color: transparent;
-            overscroll-behavior-y: none;
+            margin: 0;
+            padding: 0;
         }
 
         .font-mono { font-family: 'JetBrains Mono', monospace; }
@@ -38,38 +38,25 @@
         .login-bg {
             background-color: #000;
             background-image: 
-                radial-gradient(circle at 50% 0%, rgba(204, 255, 0, 0.15) 0%, transparent 50%),
-                linear-gradient(180deg, rgba(20, 20, 20, 0) 0%, #000 100%);
-            position: relative;
-        }
-        
-        .login-bg::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 120%;
-            height: 120%;
-            background: radial-gradient(circle, rgba(204, 255, 0, 0.03) 0%, transparent 60%);
-            z-index: 0;
-            pointer-events: none;
+                radial-gradient(circle at 50% 50%, rgba(204, 255, 0, 0.1) 0%, transparent 60%),
+                linear-gradient(0deg, rgba(0,0,0,1) 0%, rgba(20,20,20,0) 50%, rgba(0,0,0,1) 100%);
+            background-attachment: fixed;
         }
 
         /* Glass Panels */
         .glass-panel {
-            background: rgba(15, 15, 15, 0.8);
-            backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
+            background: rgba(10, 10, 10, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border: 1px solid var(--glass-border);
             box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.5);
         }
 
         /* Pro Chart Styles */
         .glass-chart {
-            background: linear-gradient(180deg, rgba(25, 30, 35, 0.6) 0%, rgba(5, 5, 5, 0.8) 100%);
-            border: 1px solid rgba(255,255,255,0.05);
-            box-shadow: inset 0 0 30px rgba(0,0,0,0.8);
+            background: linear-gradient(180deg, rgba(20, 20, 20, 0.9) 0%, rgba(5, 5, 5, 0.95) 100%);
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: inset 0 0 40px rgba(0,0,0,0.8);
         }
 
         .chart-line {
@@ -78,12 +65,12 @@
             stroke-width: 3;
             stroke-linecap: round;
             stroke-linejoin: round;
-            filter: drop-shadow(0 0 8px rgba(204, 255, 0, 0.4));
+            filter: drop-shadow(0 0 6px rgba(204, 255, 0, 0.3));
         }
         
         .chart-area {
             fill: url(#gradientArea);
-            opacity: 0.2;
+            opacity: 0.3;
         }
 
         /* Logo Container */
@@ -107,11 +94,41 @@
         }
 
         /* Screen Management */
-        .screen { display: none; opacity: 0; transition: opacity 0.4s ease; width: 100%; height: 100vh; position: fixed; top: 0; left: 0; overflow-y: auto; }
+        .screen { 
+            display: none; 
+            opacity: 0; 
+            transition: opacity 0.4s ease; 
+            width: 100%; 
+            min-height: 100vh;
+        }
         .screen.active { display: flex; opacity: 1; flex-direction: column; }
         
-        /* App screen needs specific layout */
-        #app-screen.active { display: block; overflow-y: scroll; }
+        /* Dashboard Layout - Responsive Grid */
+        #dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+            width: 100%;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+
+        /* Desktop Layout */
+        @media (min-width: 1024px) {
+            #dashboard-grid {
+                grid-template-columns: 2fr 1fr; /* Chart takes 2/3, Assets take 1/3 */
+                padding: 2rem;
+                height: calc(100vh - 80px); /* Fit within screen minus header */
+            }
+            .desktop-full-height {
+                height: 100%;
+                overflow-y: auto;
+            }
+            #main-chart-container {
+                height: 400px; /* Taller chart on desktop */
+            }
+        }
 
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -194,11 +211,11 @@
             }
         });
 
-        // --- DATA LAYER (CoinGecko) ---
+        // --- DATA LAYER ---
         async function fetchLivePrices() {
             try {
                 const ids = Object.values(window.appState.assets)
-                    .filter(a => a.id !== 'cryptinity') // CTY is manual
+                    .filter(a => a.id !== 'cryptinity')
                     .map(a => a.id).join(',');
                 
                 const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);
@@ -206,16 +223,13 @@
                 
                 Object.keys(window.appState.assets).forEach(key => {
                     const id = window.appState.assets[key].id;
-                    if (data[id]) {
-                        window.appState.rates[key] = data[id].usd;
-                    }
+                    if (data[id]) window.appState.rates[key] = data[id].usd;
                 });
                 
+                window.appState.rates.CTY = 0.0004; // Lock CTY
                 renderAssetList();
                 updateBalanceUI();
-            } catch (e) {
-                console.warn("CoinGecko Price Error:", e);
-            }
+            } catch (e) { console.warn("Price API:", e); window.appState.rates.CTY = 0.0004; }
         }
 
         function initUserData(user) {
@@ -228,7 +242,6 @@
                     setDoc(doc.ref, { CTY: 0, BTC: 0, ETH: 0, BNB: 0, SOL: 0, USDT: 0 });
                 }
             });
-            
             const txQ = query(collection(db, 'artifacts', firebaseConfig.projectId, 'users', user.uid, 'transactions'), orderBy('timestamp', 'desc'));
             onSnapshot(txQ, (snap) => {
                 window.appState.transactions = snap.docs.map(d => d.data());
@@ -236,46 +249,39 @@
             });
         }
 
-        // --- PRO CHART ENGINE (Spline + CoinGecko) ---
-        
-        // 1. Fetch Chart Data
+        // --- CHART ENGINE ---
         window.initChart = async (assetKey) => {
             window.appState.currentAsset = assetKey;
             const asset = window.appState.assets[assetKey];
             
-            // UI Update
             document.getElementById('chart-icon').src = asset.icon;
             document.getElementById('chart-name').innerText = asset.name;
+            document.getElementById('chart-price').innerText = 'Loading...';
             
-            // Handle CTY/USDT (Fake Stable)
             if (assetKey === 'CTY' || assetKey === 'USDT') {
                 const price = assetKey === 'CTY' ? 0.0004 : 1.00;
                 updateChartHeader(price);
-                // Generate flat-ish line
                 const fakeData = Array(24).fill(0).map((_, i) => price + (Math.random() * price * 0.02));
                 drawChart(fakeData);
                 return;
             }
 
-            // Real Data from CoinGecko
             try {
-                // Get current price immediately for header
-                updateChartHeader(window.appState.rates[assetKey] || 0);
+                if (window.appState.rates[assetKey]) updateChartHeader(window.appState.rates[assetKey]);
                 
                 const response = await fetch(`https://api.coingecko.com/api/v3/coins/${asset.id}/market_chart?vs_currency=usd&days=1`);
+                if(!response.ok) throw new Error("API Limit");
                 const json = await response.json();
                 
-                // Extract prices and downsample for smoother SVG
                 const prices = json.prices.map(p => p[1]);
-                const downsampled = prices.filter((_, i) => i % 5 === 0).slice(-30); // Last 30 points
+                const downsampled = prices.filter((_, i) => i % 5 === 0).slice(-40); 
                 
                 drawChart(downsampled);
-                updateChartHeader(prices[prices.length-1]); // Update with latest from chart
+                updateChartHeader(prices[prices.length-1]);
                 
             } catch (e) {
                 console.warn("Chart Fetch Error:", e);
-                // Fallback chart
-                drawChart([100, 105, 102, 108, 104, 110, 115]);
+                drawChart([100, 102, 105, 103, 108, 112, 110, 115, 118, 114, 120]); // Fallback
             }
         };
 
@@ -284,56 +290,51 @@
             el.innerText = '$' + price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 6});
         }
 
-        // 2. Draw Smooth Spline Chart
         function drawChart(data) {
             const svg = document.getElementById('main-chart');
             if(!svg) return;
-            const width = 350;
-            const height = 150;
+            
+            // Dynamic resizing based on container
+            const rect = svg.getBoundingClientRect();
+            const width = rect.width || 350;
+            const height = rect.height || 200;
+            
+            svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
             
             const min = Math.min(...data);
             const max = Math.max(...data);
             const range = max - min || 1; 
 
-            // Convert data to XY coordinates
             const points = data.map((val, i) => {
                 const x = (i / (data.length - 1)) * width;
-                const y = height - ((val - min) / range) * (height - 20) - 10;
+                // Add vertical padding
+                const y = height - ((val - min) / range) * (height * 0.8) - (height * 0.1);
                 return {x, y};
             });
 
-            // Generate Catmull-Rom Spline Path
             const pathD = getSplinePath(points);
-
-            // Apply to DOM
             document.getElementById('chart-path-line').setAttribute('d', pathD);
             document.getElementById('chart-path-area').setAttribute('d', `${pathD} L${width},${height} L0,${height} Z`);
             
-            // Dot at end
             const last = points[points.length-1];
             const dot = document.getElementById('chart-dot');
             dot.setAttribute('cx', last.x);
             dot.setAttribute('cy', last.y);
         }
 
-        // Helper: Create Smooth Path
         function getSplinePath(points) {
             if (points.length === 0) return "";
             if (points.length === 1) return `M${points[0].x},${points[0].y}`;
-
             let d = `M${points[0].x},${points[0].y}`;
-            
             for (let i = 0; i < points.length - 1; i++) {
                 const p0 = points[Math.max(i - 1, 0)];
                 const p1 = points[i];
                 const p2 = points[i + 1];
                 const p3 = points[Math.min(i + 2, points.length - 1)];
-
                 const cp1x = p1.x + (p2.x - p0.x) / 6;
                 const cp1y = p1.y + (p2.y - p0.y) / 6;
                 const cp2x = p2.x - (p3.x - p1.x) / 6;
                 const cp2y = p2.y - (p3.y - p1.y) / 6;
-
                 d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
             }
             return d;
@@ -365,15 +366,15 @@
                     <div class="flex items-center gap-4">
                         <div class="cty-logo-container"><img src="${asset.icon}" class="cty-logo-img"></div>
                         <div>
-                            <p class="font-bold text-lg leading-tight flex items-center gap-2">
+                            <p class="font-bold text-lg leading-tight flex items-center gap-2 text-white">
                                 ${asset.name}
                                 ${key === 'CTY' ? '<span class="text-[10px] bg-[#ccff00]/20 text-[#ccff00] px-1.5 py-0.5 rounded border border-[#ccff00]/30">LOCKED</span>' : ''}
                             </p>
-                            <p class="text-xs text-zinc-500 font-mono">$${price.toLocaleString()}</p>
+                            <p class="text-xs text-zinc-500 font-mono">$${price.toLocaleString(undefined, {maximumFractionDigits: 6})}</p>
                         </div>
                     </div>
                     <div class="text-right">
-                        <p class="font-bold text-lg">$${val.toLocaleString(undefined, {maximumFractionDigits: 2})}</p>
+                        <p class="font-bold text-lg text-white">$${val.toLocaleString(undefined, {maximumFractionDigits: 2})}</p>
                         <p class="text-xs text-zinc-500 font-mono">${bal.toFixed(4)} ${key}</p>
                     </div>
                 `;
@@ -391,7 +392,7 @@
                             <div class="p-2 rounded-full ${tx.type === 'deposit' ? 'bg-[#ccff00]/20 text-[#ccff00]' : 'bg-red-500/20 text-red-500'}">
                                 <i data-lucide="${tx.type === 'deposit' ? 'arrow-down-left' : 'arrow-up-right'}"></i>
                             </div>
-                            <div><p class="font-bold capitalize text-sm">${tx.type}</p><p class="text-[10px] text-zinc-500">Confirmed</p></div>
+                            <div><p class="font-bold capitalize text-sm text-white">${tx.type}</p><p class="text-[10px] text-zinc-500">Confirmed</p></div>
                         </div>
                         <div class="text-right">
                             <p class="font-bold text-sm ${tx.type === 'deposit' ? 'text-[#ccff00]' : 'text-white'}">
@@ -408,13 +409,21 @@
         window.switchTab = (tab) => {
             ['home','swap','history','claim'].forEach(t => document.getElementById('view-'+t).classList.add('hidden'));
             document.getElementById('view-'+tab).classList.remove('hidden');
+            
+            // Nav styling
             document.querySelectorAll('.nav-btn').forEach(b => {
                 b.classList.remove('text-[#ccff00]');
                 b.classList.add('text-zinc-600');
             });
-            document.getElementById('nav-'+tab).classList.remove('text-zinc-600');
-            document.getElementById('nav-'+tab).classList.add('text-[#ccff00]');
-            if(tab==='home') window.initChart(window.appState.currentAsset);
+            const btn = document.getElementById('nav-'+tab);
+            btn.classList.remove('text-zinc-600');
+            btn.classList.add('text-[#ccff00]');
+            
+            if(tab==='home') {
+                window.initChart(window.appState.currentAsset);
+                // On mobile, scroll to top of chart?
+                // On desktop, layout handles it.
+            }
         }
 
         window.openWhitePaper = () => document.getElementById('whitepaper-modal').classList.remove('hidden');
@@ -425,8 +434,8 @@
             document.getElementById('feature-modal').classList.remove('hidden');
         }
         window.toggleAuthType = () => {
-            const isLogin = document.getElementById('auth-submit-btn').innerText === 'Login';
-            document.getElementById('auth-submit-btn').innerText = isLogin ? 'Sign Up' : 'Login';
+            const isLogin = document.getElementById('auth-submit-btn').innerText === 'LOGIN';
+            document.getElementById('auth-submit-btn').innerText = isLogin ? 'SIGN UP' : 'LOGIN';
             document.getElementById('auth-toggle-link').innerText = isLogin ? 'Login' : 'Create ID';
             document.getElementById('auth-head').innerText = isLogin ? 'Create Web4 ID' : 'Web4 Connect';
         }
@@ -434,13 +443,15 @@
         function showScreen(name) {
             document.querySelectorAll('.screen').forEach(s => { s.style.display='none'; s.classList.remove('active'); });
             const s = document.getElementById(name+'-screen');
-            if(name === 'auth') s.style.display = 'flex'; // Flex for centering
-            else s.style.display = 'block';
+            s.style.display = 'flex'; // Use flex for centering on Auth, column for App
             
             setTimeout(()=>s.classList.add('active'),10);
             if(name==='app') {
                 lucide.createIcons();
                 initChart('BTC');
+                // Trigger resize for chart calculation
+                window.dispatchEvent(new Event('resize'));
+                
                 setInterval(() => {
                     const d = new Date();
                     document.getElementById('countdown').innerText = `${90 - d.getDay()}d : ${24 - d.getHours()}h : ${60 - d.getMinutes()}m`;
@@ -456,6 +467,10 @@
                     showScreen('auth');
                 }
             }, 2500);
+            
+            window.addEventListener('resize', () => {
+                if(window.appState.currentAsset) window.initChart(window.appState.currentAsset);
+            });
         }
     </script>
 </head>
@@ -477,7 +492,6 @@
     <div id="auth-screen" class="screen login-bg z-40 items-center justify-center p-6">
         <div class="w-full max-w-sm glass-panel p-8 rounded-3xl text-center relative z-10 border border-[#ccff00]/30 shadow-[0_0_40px_rgba(204,255,0,0.1)]">
             
-            <!-- Logo Ring -->
             <div class="w-20 h-20 bg-black rounded-full flex items-center justify-center mx-auto mb-6 border-2 border-[#ccff00] shadow-[0_0_15px_#ccff00]">
                 <i data-lucide="globe" class="w-10 h-10 text-[#ccff00]"></i>
             </div>
@@ -516,111 +530,132 @@
         </div>
     </div>
 
-    <!-- APP DASHBOARD -->
+    <!-- APP DASHBOARD (RESPONSIVE) -->
     <div id="app-screen" class="screen">
-        <div class="w-full md:max-w-md mx-auto relative min-h-screen flex flex-col pb-24">
+        <div class="w-full h-full flex flex-col">
             
-            <!-- Header -->
-            <div class="safe-padding-top px-6 pt-4 flex justify-between items-center bg-black/80 backdrop-blur-md sticky top-0 z-30">
+            <!-- HEADER -->
+            <div class="w-full px-6 py-4 flex justify-between items-center bg-black/90 backdrop-blur-md sticky top-0 z-30 border-b border-zinc-800">
                 <div class="flex items-center gap-2">
                     <i data-lucide="shield" class="w-6 h-6 text-[#ccff00]"></i>
-                    <span class="font-bold tracking-wider">CRYPTINITY</span>
+                    <span class="font-bold tracking-wider text-lg">CRYPTINITY</span>
                 </div>
-                <button onclick="openWhitePaper()" class="p-2 bg-zinc-900 rounded-full border border-zinc-800 hover:border-[#ccff00] transition-colors">
-                    <i data-lucide="file-text" class="w-5 h-5 text-zinc-400"></i>
-                </button>
+                <div class="flex items-center gap-4">
+                    <button onclick="openWhitePaper()" class="text-zinc-400 hover:text-[#ccff00] transition-colors hidden md:block text-sm font-bold">White Paper</button>
+                    <button onclick="openWhitePaper()" class="p-2 bg-zinc-900 rounded-full border border-zinc-800 hover:border-[#ccff00] transition-colors md:hidden">
+                        <i data-lucide="file-text" class="w-5 h-5 text-zinc-400"></i>
+                    </button>
+                    <div class="w-8 h-8 rounded-full bg-gradient-to-br from-[#ccff00] to-green-600"></div>
+                </div>
             </div>
 
-            <div class="px-4 space-y-6 mt-4">
+            <!-- DASHBOARD CONTENT (GRID LAYOUT) -->
+            <div id="dashboard-grid">
                 
                 <!-- HOME VIEW -->
-                <div id="view-home">
-                    <div class="text-center mb-6">
-                        <p class="text-zinc-500 text-xs uppercase tracking-wider mb-1">Total Balance</p>
-                        <h1 id="total-balance" class="text-4xl font-bold text-white">$0.00</h1>
-                        <div class="inline-flex items-center gap-1 bg-[#ccff00]/10 text-[#ccff00] text-xs px-2 py-0.5 rounded-full mt-2 border border-[#ccff00]/20">
-                            <i data-lucide="trending-up" class="w-3 h-3"></i> +2.4%
+                <div id="view-home" class="col-span-1 lg:col-span-2 flex flex-col gap-6 w-full h-full">
+                    
+                    <!-- Left/Top Section: Chart & Balance -->
+                    <div class="flex flex-col gap-6">
+                        
+                        <!-- Header Stats -->
+                        <div class="flex flex-col md:flex-row justify-between items-end gap-4">
+                            <div>
+                                <p class="text-zinc-500 text-xs uppercase tracking-wider mb-1">Total Balance</p>
+                                <h1 id="total-balance" class="text-4xl lg:text-5xl font-bold text-white">$0.00</h1>
+                            </div>
+                            <div class="inline-flex items-center gap-1 bg-[#ccff00]/10 text-[#ccff00] text-xs px-3 py-1 rounded-full border border-[#ccff00]/20">
+                                <i data-lucide="trending-up" class="w-3 h-3"></i> +2.4% Today
+                            </div>
                         </div>
-                    </div>
 
-                    <!-- PRO CHART (Smooth Spline) -->
-                    <div class="glass-chart rounded-3xl p-5 relative overflow-hidden group mb-6">
-                        <div class="flex justify-between items-start mb-4">
-                            <div class="flex items-center gap-2">
-                                <div class="cty-logo-container" style="width: 28px; height: 28px;">
-                                    <img id="chart-icon" src="" class="cty-logo-img">
+                        <!-- PRO CHART -->
+                        <div class="glass-chart rounded-3xl p-6 relative overflow-hidden group w-full flex-1 min-h-[300px]" id="main-chart-container">
+                            <div class="flex justify-between items-start mb-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="cty-logo-container" style="width: 32px; height: 32px;">
+                                        <img id="chart-icon" src="" class="cty-logo-img">
+                                    </div>
+                                    <div>
+                                        <p id="chart-name" class="text-sm font-bold text-zinc-300">Bitcoin</p>
+                                        <p id="chart-price" class="text-xl lg:text-2xl font-mono font-bold leading-none text-white tracking-tight">$0.00</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p id="chart-name" class="text-sm font-bold text-zinc-300">Bitcoin</p>
-                                    <p id="chart-price" class="text-xl font-mono font-bold leading-none text-white tracking-tight">$0.00</p>
+                                <div class="flex gap-2">
+                                    <span class="text-[10px] bg-zinc-800 border border-zinc-700 px-3 py-1 rounded text-zinc-400">24H</span>
                                 </div>
                             </div>
-                            <div class="flex gap-2">
-                                <span class="text-[10px] bg-zinc-800 border border-zinc-700 px-2 py-1 rounded text-zinc-400">24H</span>
+
+                            <!-- SVG Chart -->
+                            <div class="w-full h-full relative" style="height: calc(100% - 60px);">
+                                <svg id="main-chart" class="w-full h-full" preserveAspectRatio="none">
+                                    <defs>
+                                        <linearGradient id="gradientArea" x1="0" x2="0" y1="0" y2="1">
+                                            <stop offset="0%" stop-color="#ccff00" stop-opacity="0.2"/>
+                                            <stop offset="100%" stop-color="#ccff00" stop-opacity="0"/>
+                                        </linearGradient>
+                                    </defs>
+                                    <path id="chart-path-area" class="chart-area" d="" />
+                                    <path id="chart-path-line" class="chart-line" d="" />
+                                    <circle id="chart-dot" r="6" fill="#000" stroke="#ccff00" stroke-width="3" cx="0" cy="0" />
+                                </svg>
+                                <!-- Grid Lines -->
+                                <div class="absolute inset-0 pointer-events-none flex flex-col justify-between py-2 opacity-10">
+                                    <div class="border-t border-white w-full"></div>
+                                    <div class="border-t border-white w-full"></div>
+                                    <div class="border-t border-white w-full"></div>
+                                    <div class="border-t border-white w-full"></div>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- Graph Container -->
-                        <div class="h-40 w-full relative">
-                            <svg id="main-chart" viewBox="0 0 350 150" class="w-full h-full" preserveAspectRatio="none">
-                                <defs>
-                                    <linearGradient id="gradientArea" x1="0" x2="0" y1="0" y2="1">
-                                        <stop offset="0%" stop-color="#ccff00" stop-opacity="0.2"/>
-                                        <stop offset="100%" stop-color="#ccff00" stop-opacity="0"/>
-                                    </linearGradient>
-                                </defs>
-                                <path id="chart-path-area" class="chart-area" d="" />
-                                <path id="chart-path-line" class="chart-line" d="" />
-                                <circle id="chart-dot" r="5" fill="#black" stroke="#ccff00" stroke-width="2" cx="0" cy="0" />
-                            </svg>
-                            <!-- Grid Lines -->
-                            <div class="absolute inset-0 pointer-events-none flex flex-col justify-between py-2 opacity-10">
-                                <div class="border-t border-white w-full"></div>
-                                <div class="border-t border-white w-full"></div>
-                                <div class="border-t border-white w-full"></div>
-                            </div>
+                        <!-- Action Buttons -->
+                        <div class="grid grid-cols-4 gap-4">
+                            <button onclick="showFeatureModal('Deposit')" class="flex flex-col items-center gap-2 group p-4 bg-zinc-900/50 rounded-2xl hover:bg-zinc-800 transition-all border border-zinc-800/50">
+                                <div class="w-10 h-10 rounded-full bg-[#ccff00] flex items-center justify-center text-black shadow-[0_0_15px_rgba(204,255,0,0.3)]"><i data-lucide="arrow-down-left" class="w-5 h-5"></i></div>
+                                <span class="text-xs font-bold text-zinc-300">Deposit</span>
+                            </button>
+                            <button onclick="showFeatureModal('Withdraw')" class="flex flex-col items-center gap-2 group p-4 bg-zinc-900/50 rounded-2xl hover:bg-zinc-800 transition-all border border-zinc-800/50">
+                                <div class="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-white border border-zinc-700 group-hover:border-[#ccff00] transition-colors"><i data-lucide="arrow-up-right" class="w-5 h-5"></i></div>
+                                <span class="text-xs font-bold text-zinc-300">Withdraw</span>
+                            </button>
+                            <button onclick="switchTab('swap')" class="flex flex-col items-center gap-2 group p-4 bg-zinc-900/50 rounded-2xl hover:bg-zinc-800 transition-all border border-zinc-800/50">
+                                <div class="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-white border border-zinc-700 group-hover:border-[#ccff00] transition-colors"><i data-lucide="refresh-ccw" class="w-5 h-5"></i></div>
+                                <span class="text-xs font-bold text-zinc-300">Swap</span>
+                            </button>
+                             <button onclick="switchTab('claim')" class="flex flex-col items-center gap-2 group p-4 bg-zinc-900/50 rounded-2xl hover:bg-zinc-800 transition-all border border-zinc-800/50">
+                                <div class="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-[#ccff00] border border-zinc-700 group-hover:bg-[#ccff00]/10 transition-colors"><i data-lucide="gift" class="w-5 h-5"></i></div>
+                                <span class="text-xs font-bold text-zinc-300">Claim</span>
+                            </button>
                         </div>
                     </div>
+                </div>
 
-                    <!-- Actions -->
-                    <div class="grid grid-cols-4 gap-3 mb-6">
-                        <button onclick="showFeatureModal('Deposit')" class="flex flex-col items-center gap-2 group">
-                            <div class="w-14 h-14 rounded-full bg-[#ccff00] flex items-center justify-center text-black shadow-[0_0_15px_rgba(204,255,0,0.3)] hover:scale-105 transition-transform"><i data-lucide="arrow-down-left" class="w-6 h-6"></i></div>
-                            <span class="text-[10px] font-bold text-zinc-300">Deposit</span>
-                        </button>
-                        <button onclick="showFeatureModal('Withdraw')" class="flex flex-col items-center gap-2 group">
-                            <div class="w-14 h-14 rounded-full bg-zinc-900 flex items-center justify-center text-white border border-zinc-800 hover:border-[#ccff00] transition-colors"><i data-lucide="arrow-up-right" class="w-6 h-6"></i></div>
-                            <span class="text-[10px] font-bold text-zinc-300">Withdraw</span>
-                        </button>
-                        <button onclick="switchTab('swap')" class="flex flex-col items-center gap-2 group">
-                            <div class="w-14 h-14 rounded-full bg-zinc-900 flex items-center justify-center text-white border border-zinc-800 hover:border-[#ccff00] transition-colors"><i data-lucide="refresh-ccw" class="w-6 h-6"></i></div>
-                            <span class="text-[10px] font-bold text-zinc-300">Swap</span>
-                        </button>
-                         <button onclick="switchTab('claim')" class="flex flex-col items-center gap-2 group">
-                            <div class="w-14 h-14 rounded-full bg-zinc-900 flex items-center justify-center text-[#ccff00] border border-zinc-800 hover:bg-[#ccff00]/10 transition-colors"><i data-lucide="gift" class="w-6 h-6"></i></div>
-                            <span class="text-[10px] font-bold text-zinc-300">Claim</span>
-                        </button>
-                    </div>
-
+                <!-- Right Side: Assets & Info -->
+                <div class="col-span-1 desktop-full-height flex flex-col gap-6">
+                    
                     <!-- Countdown -->
-                    <div class="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 flex items-center justify-between mb-4 backdrop-blur-sm">
-                        <div class="flex items-center gap-3">
-                            <div class="p-2 bg-[#ccff00]/10 rounded-full"><i data-lucide="clock" class="w-5 h-5 text-[#ccff00]"></i></div>
+                    <div class="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-5 flex items-center justify-between backdrop-blur-sm">
+                        <div class="flex items-center gap-4">
+                            <div class="p-3 bg-[#ccff00]/10 rounded-full"><i data-lucide="clock" class="w-6 h-6 text-[#ccff00]"></i></div>
                             <div>
                                 <p class="text-[10px] text-zinc-400 uppercase tracking-wider font-bold">Safe Zone Unlock</p>
-                                <p id="countdown" class="text-white font-mono text-lg font-bold">90d : 00h : 00m</p>
+                                <p id="countdown" class="text-white font-mono text-xl font-bold">90d : 00h : 00m</p>
                             </div>
                         </div>
                     </div>
 
                     <!-- Assets List -->
-                    <h3 class="font-bold text-lg mb-3 px-1">Live Assets</h3>
-                    <div id="assets-list" class="pb-10 space-y-2"></div>
+                    <div class="flex-1 bg-zinc-900/30 rounded-3xl border border-zinc-800/50 p-6 overflow-hidden flex flex-col">
+                        <h3 class="font-bold text-lg mb-4 text-zinc-300">Live Markets</h3>
+                        <div id="assets-list" class="space-y-3 overflow-y-auto no-scrollbar flex-1"></div>
+                    </div>
+
                 </div>
 
-                <!-- SWAP VIEW -->
-                <div id="view-swap" class="hidden h-full flex flex-col justify-center items-center py-20 text-center">
-                    <div class="bg-zinc-900 p-8 rounded-3xl border border-zinc-800 w-full shadow-2xl">
+                <!-- Hidden Views (Swap/History/Claim) - Overlay on Mobile, Integrated on Desktop? For simplicity, they replace content -->
+                <div id="view-swap" class="hidden col-span-1 lg:col-span-3 flex flex-col justify-center items-center h-full">
+                    <div class="bg-zinc-900 p-8 rounded-3xl border border-zinc-800 w-full max-w-md shadow-2xl">
                         <h2 class="text-2xl font-bold mb-4">Exchange</h2>
                         <p class="text-zinc-500 text-sm mb-6">Atomic Swap Engine v4.0</p>
                         <div class="bg-black p-4 rounded-xl border border-zinc-800 mb-2 text-left">
@@ -635,29 +670,29 @@
                             <div class="flex justify-between items-center mt-1"><span class="text-2xl font-bold">0.00</span><span class="font-bold">CTY</span></div>
                         </div>
                         <button class="w-full bg-zinc-800 text-zinc-500 font-bold py-4 rounded-xl mt-6 cursor-not-allowed">Insufficient Balance</button>
+                        <button onclick="switchTab('home')" class="mt-4 text-zinc-500 text-xs hover:text-white">Cancel</button>
                     </div>
                 </div>
 
-                <!-- HISTORY VIEW -->
-                <div id="view-history" class="hidden">
+                <div id="view-history" class="hidden col-span-1 lg:col-span-3 w-full h-full p-4">
                     <h2 class="font-bold text-xl mb-4">Transactions</h2>
-                    <div id="history-list"></div>
+                    <div id="history-list" class="max-w-2xl mx-auto"></div>
+                    <button onclick="switchTab('home')" class="mt-4 text-zinc-500 text-xs hover:text-white block mx-auto">Back to Home</button>
                 </div>
 
-                <!-- CLAIM VIEW -->
-                <div id="view-claim" class="hidden h-[75vh] bg-black rounded-2xl overflow-hidden border border-zinc-800 flex flex-col shadow-2xl">
-                    <div class="flex justify-between items-center p-4 bg-zinc-900 border-b border-zinc-800">
+                <div id="view-claim" class="hidden col-span-1 lg:col-span-3 w-full h-full flex flex-col">
+                    <div class="flex justify-between items-center p-4 bg-zinc-900 border-b border-zinc-800 rounded-t-2xl">
                         <div class="flex items-center gap-2"><i data-lucide="gift" class="w-4 h-4 text-[#ccff00]"></i><span class="text-xs font-bold">Web4 Airdrop</span></div>
-                        <button onclick="window.open('https://cryptinity.github.io/Sci-fi-Cryptinity-Web4/', '_blank')" class="text-zinc-500 text-xs flex items-center gap-1 hover:text-white"><i data-lucide="external-link" class="w-3 h-3"></i> Open</button>
+                        <button onclick="switchTab('home')" class="text-zinc-500 text-xs hover:text-white">Close</button>
                     </div>
-                    <iframe src="https://cryptinity.github.io/Sci-fi-Cryptinity-Web4/" class="w-full h-full border-0 bg-zinc-950"></iframe>
+                    <iframe src="https://cryptinity.github.io/Sci-fi-Cryptinity-Web4/" class="w-full h-full flex-1 border-0 bg-zinc-950 rounded-b-2xl" style="min-height: 500px;"></iframe>
                 </div>
 
-            </div>
+            </div> <!-- End Grid -->
         </div>
         
-        <!-- NAV BAR -->
-        <div class="safe-padding-bottom fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-xl border-t border-zinc-900 pb-4 pt-4 px-8 flex justify-between items-center z-50">
+        <!-- NAV BAR (Visible only on Mobile) -->
+        <div class="lg:hidden safe-padding-bottom fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-xl border-t border-zinc-900 pb-4 pt-4 px-8 flex justify-between items-center z-50">
             <button onclick="switchTab('home')" class="nav-btn text-[#ccff00] flex flex-col items-center gap-1 group" id="nav-home">
                 <i data-lucide="wallet" class="w-6 h-6 group-active:scale-95 transition-transform"></i><span class="text-[10px] font-bold">Wallet</span>
             </button>
@@ -683,42 +718,44 @@
         </div>
 
         <!-- WHITE PAPER MODAL -->
-        <div id="whitepaper-modal" class="hidden fixed inset-0 z-[70] bg-black flex flex-col animate-in slide-in-from-bottom duration-300">
-            <div class="safe-padding-top px-6 py-4 bg-zinc-900 border-b border-zinc-800 flex justify-between items-center sticky top-0 z-10">
-                <h2 class="text-lg font-bold">White Paper</h2>
-                <button onclick="closeWhitePaper()" class="bg-black p-2 rounded-full border border-zinc-700 hover:bg-zinc-900"><i data-lucide="x" class="w-5 h-5"></i></button>
-            </div>
-            <div class="flex-1 overflow-y-auto p-6 whitepaper-content safe-padding-bottom pb-24">
-                <p class="text-[#ccff00] font-mono text-xs uppercase mb-4 tracking-widest">Version 1.0 | December 2025</p>
-                <h1>THE ARCHITECTURE OF THE SAFE ZONE</h1>
-                
-                <h2>1. ABSTRACT</h2>
-                <p>Welcome to the Safe Zone. The internet is broken. Web2 sold your data; Web3 was too complex. Cryptinity Web4 is the next evolution—a "Sci-Fi Hybrid" ecosystem that unifies Social Interaction, High-Speed Finance, Digital Vaults, and Military-Grade Security into a single mobile application.</p>
-                <p>Cryptinity is not just a platform; it is a Social Finance (SoFi) Protocol powered by the CTY token. By leveraging the Solana blockchain, we have achieved the theoretical limit of transaction speed—making finance faster than the speed of light compared to legacy banking.</p>
+        <div id="whitepaper-modal" class="hidden fixed inset-0 z-[70] bg-black/95 flex flex-col animate-in slide-in-from-bottom duration-300 md:items-center md:justify-center">
+            <div class="w-full h-full md:max-w-2xl md:h-[80vh] md:border md:border-zinc-800 md:rounded-2xl bg-black flex flex-col">
+                <div class="safe-padding-top px-6 py-4 bg-zinc-900 border-b border-zinc-800 flex justify-between items-center sticky top-0 z-10 md:rounded-t-2xl">
+                    <h2 class="text-lg font-bold">White Paper</h2>
+                    <button onclick="closeWhitePaper()" class="bg-black p-2 rounded-full border border-zinc-700 hover:bg-zinc-900"><i data-lucide="x" class="w-5 h-5"></i></button>
+                </div>
+                <div class="flex-1 overflow-y-auto p-6 whitepaper-content safe-padding-bottom pb-24 md:pb-6">
+                    <p class="text-[#ccff00] font-mono text-xs uppercase mb-4 tracking-widest">Version 1.0 | December 2025</p>
+                    <h1>THE ARCHITECTURE OF THE SAFE ZONE</h1>
+                    
+                    <h2>1. ABSTRACT</h2>
+                    <p>Welcome to the Safe Zone. The internet is broken. Web2 sold your data; Web3 was too complex. Cryptinity Web4 is the next evolution—a "Sci-Fi Hybrid" ecosystem that unifies Social Interaction, High-Speed Finance, Digital Vaults, and Military-Grade Security into a single mobile application.</p>
+                    <p>Cryptinity is not just a platform; it is a Social Finance (SoFi) Protocol powered by the CTY token. By leveraging the Solana blockchain, we have achieved the theoretical limit of transaction speed—making finance faster than the speed of light compared to legacy banking.</p>
 
-                <h2>2. THE PROBLEM</h2>
-                <p><strong>Social Manipulation:</strong> Social giants use predatory "Algorithms" to control what you see, creating echo chambers and shadow-banning freedom of speech.</p>
-                <p><strong>Financial Friction:</strong> Traditional banks are archaic. "Pending Transactions," hidden fees, and weekend delays are unacceptable in a digital age.</p>
-                <p><strong>Security Failures:</strong> Centralized platforms are honey pots for hackers. Your data is constantly at risk.</p>
+                    <h2>2. THE PROBLEM</h2>
+                    <p><strong>Social Manipulation:</strong> Social giants use predatory "Algorithms" to control what you see, creating echo chambers and shadow-banning freedom of speech.</p>
+                    <p><strong>Financial Friction:</strong> Traditional banks are archaic. "Pending Transactions," hidden fees, and weekend delays are unacceptable in a digital age.</p>
+                    <p><strong>Security Failures:</strong> Centralized platforms are honey pots for hackers. Your data is constantly at risk.</p>
 
-                <h2>3. THE SOLUTION: THE 4 PILLARS</h2>
-                <p><strong>Pillar I: SOCIAL</strong> - The Zero-Algorithm Protocol. No manipulation. 100% organic reach. Content creators reach 100% of their audience.</p>
-                <p><strong>Pillar II: FINANCE</strong> - Hyper-Velocity Transactions. Utilizing Solana’s Proof-of-History (PoH) mechanism, CTY transactions achieve sub-second finality.</p>
-                <p><strong>Pillar III: THE VAULT</strong> - The Neo-Bank. Self-Custody. You hold your keys. Cryptinity cannot freeze your funds.</p>
-                <p><strong>Pillar IV: SECURITY</strong> - The "Safe Zone" Priority. Imunify 360 Integration. Real-time protection against bot attacks and malware.</p>
+                    <h2>3. THE SOLUTION: THE 4 PILLARS</h2>
+                    <p><strong>Pillar I: SOCIAL</strong> - The Zero-Algorithm Protocol. No manipulation. 100% organic reach. Content creators reach 100% of their audience.</p>
+                    <p><strong>Pillar II: FINANCE</strong> - Hyper-Velocity Transactions. Utilizing Solana’s Proof-of-History (PoH) mechanism, CTY transactions achieve sub-second finality.</p>
+                    <p><strong>Pillar III: THE VAULT</strong> - The Neo-Bank. Self-Custody. You hold your keys. Cryptinity cannot freeze your funds.</p>
+                    <p><strong>Pillar IV: SECURITY</strong> - The "Safe Zone" Priority. Imunify 360 Integration. Real-time protection against bot attacks and malware.</p>
 
-                <h2>4. THE TOKEN: CTY</h2>
-                <p>Token Name: Cryptinity Web4<br>Ticker: CTY<br>Network: Solana (SPL Token-2022 Standard)<br>Total Supply: 1,000,000,000 CTY</p>
-                <p><strong>Utility:</strong> Gas-Free Experience, Governance, Commerce.</p>
-                
-                <h2>5. ROADMAP</h2>
-                <p><strong>Phase 1: The Awakening (Current)</strong><br>Deployment of CTY Token on Solana Devnet. Launch of White Paper. Community Building.</p>
-                <p><strong>Phase 2: The Architecture</strong><br>Beta Launch of the "Zero Algorithm" Social App. Integration of "The Vault" Wallet. Mainnet Token Launch.</p>
-                <p><strong>Phase 3: The Safe Zone</strong><br>Global Marketing Campaign. Listing on Major Exchanges (CEX/DEX). Full Web4 AI Integration.</p>
+                    <h2>4. THE TOKEN: CTY</h2>
+                    <p>Token Name: Cryptinity Web4<br>Ticker: CTY<br>Network: Solana (SPL Token-2022 Standard)<br>Total Supply: 1,000,000,000 CTY</p>
+                    <p><strong>Utility:</strong> Gas-Free Experience, Governance, Commerce.</p>
+                    
+                    <h2>5. ROADMAP</h2>
+                    <p><strong>Phase 1: The Awakening (Current)</strong><br>Deployment of CTY Token on Solana Devnet. Launch of White Paper. Community Building.</p>
+                    <p><strong>Phase 2: The Architecture</strong><br>Beta Launch of the "Zero Algorithm" Social App. Integration of "The Vault" Wallet. Mainnet Token Launch.</p>
+                    <p><strong>Phase 3: The Safe Zone</strong><br>Global Marketing Campaign. Listing on Major Exchanges (CEX/DEX). Full Web4 AI Integration.</p>
 
-                <h2>6. CONCLUSION</h2>
-                <p>The era of slow banking and manipulated social feeds is over. We are building a sanctuary for your digital life.</p>
-                <p><strong>Cryptinity Web4. Social. Finance. Vault. Security. Welcome to the Safe Zone.</strong></p>
+                    <h2>6. CONCLUSION</h2>
+                    <p>The era of slow banking and manipulated social feeds is over. We are building a sanctuary for your digital life.</p>
+                    <p><strong>Cryptinity Web4. Social. Finance. Vault. Security. Welcome to the Safe Zone.</strong></p>
+                </div>
             </div>
         </div>
 
